@@ -1,20 +1,15 @@
 package org.ensime.indexer
 
 import java.io.File
-import org.apache.commons.io.FileUtils
 import org.scalatest.FunSpec
 import org.scalatest.Matchers
 import akka.event.slf4j.SLF4JLogging
 import org.ensime.config._
-import org.ensime.util.FileUtils._
 import org.ensime.test.TestUtil._
-import org.scalatest.Sequential
 import scala.concurrent.Await
 import scala.concurrent.duration.Duration
-import scala.util.Properties
 import pimpathon.file._
 import pimpathon.any._
-import scalariform.formatter.preferences.FormattingPreferences
 
 class SearchServiceSpec extends FunSpec with Matchers with SLF4JLogging {
 
@@ -27,11 +22,11 @@ class SearchServiceSpec extends FunSpec with Matchers with SLF4JLogging {
 
     // to reduce test time
     val trimmed = module.copy(
-      compileJars = Nil,
-      testJars = module.testJars filter (_.getName.contains("scalatest_"))
+      `compile-deps` = Nil,
+      `test-deps` = module.testJars filter (_.getName.contains("scalatest_"))
     )
     config.copy(
-      modules = Map(trimmed.name -> trimmed)
+      subprojects = List(trimmed)
     )
   }
 
@@ -58,7 +53,7 @@ class SearchServiceSpec extends FunSpec with Matchers with SLF4JLogging {
       val now = System.currentTimeMillis()
       for {
         m <- config.modules.values
-        r <- m.targets ++ m.testTargets
+        r <- m.targetDirs ++ m.testTargetDirs
         f <- r.tree
       } {
         // simulate a full recompile
@@ -72,7 +67,7 @@ class SearchServiceSpec extends FunSpec with Matchers with SLF4JLogging {
 
     it("should remove classfiles that have been deleted", SlowTest) {
       val module = config.modules.values.toList.head
-      val classfile = module.targets.head / "org/ensime/indexer/SearchService.class"
+      val classfile = module.targetDirs.head / "org/ensime/indexer/SearchService.class"
       assert(classfile.exists)
       classfile.delete()
       assert(refresh() === (1, 0))
