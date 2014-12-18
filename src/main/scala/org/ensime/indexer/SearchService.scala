@@ -1,5 +1,7 @@
 package org.ensime.indexer
 
+import java.util
+
 import DatabaseService._
 import akka.event.slf4j.SLF4JLogging
 import java.sql.SQLException
@@ -90,7 +92,7 @@ class SearchService(
     val bases = {
       config.modules.flatMap {
         case (name, m) =>
-          m.targets.flatMap { d => scan(d) } ::: m.testTargets.flatMap { d => scan(d) } :::
+          m.targetDirs.flatMap { d => scan(d) } ::: m.testTargetDirs.flatMap { d => scan(d) } :::
             m.compileJars.map(vfile) ::: m.testJars.map(vfile)
       }
     }.toSet + vfile(config.javaLib)
@@ -197,7 +199,7 @@ class SearchService(
     override def run(): Unit = {
       while (true) {
         val head = backlog.take() // blocks until something appears
-        val buffer = new ArrayList[(FileObject, List[FqnSymbol])]()
+        val buffer = new util.ArrayList[(FileObject, List[FqnSymbol])]()
         backlog.drainTo(buffer, 999) // 1000 at a time to avoid blow-ups
         val tail = buffer.asScala.toList
 

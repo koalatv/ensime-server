@@ -94,13 +94,6 @@ trait RichCompilerControl extends CompilerControl with RefactoringControl with C
     x.get
   }
 
-  def askInvalidateTargets(): Unit = for {
-    m <- config.modules.values
-    dir <- (m.targets ++ m.testTargets)
-  } {
-    askOption(invalidatePackage(dir))
-  }
-
   def askUnloadAllFiles(): Unit = askOption(unloadAllFiles())
 
   def askRemoveAllDeleted() = askOption(removeAllDeleted())
@@ -113,11 +106,11 @@ trait RichCompilerControl extends CompilerControl with RefactoringControl with C
         file <- config.sourceFiles
         source = getSourceFile(file.getAbsolutePath)
       } yield source
-    }.toSet ++ activeUnits.map(_.source)
+    }.toSet ++ activeUnits().map(_.source)
     askReloadFiles(all)
   }
 
-  def loadedFiles: List[SourceFile] = activeUnits.map(_.source)
+  def loadedFiles: List[SourceFile] = activeUnits().map(_.source)
 
   def askReloadExistingFiles() =
     askReloadFiles(loadedFiles)
@@ -196,12 +189,8 @@ class RichPresentationCompiler(
     symsByFile(sym.sourceFile) += sym
   }
 
-  def invalidatePackage(f: File): Unit = {
-    invalidateClassPathEntries(f.getCanonicalPath())
-  }
-
   def unloadAllFiles(): Unit = {
-    allSources.foreach(removeUnitOf(_))
+    allSources.foreach(removeUnitOf)
   }
 
   /**

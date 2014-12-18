@@ -4,6 +4,7 @@ import org.ensime.test.TestUtil
 import org.ensime.util._
 import org.scalatest.{ FunSpec, Matchers }
 import org.slf4j.LoggerFactory
+
 import scala.concurrent.duration._
 import TestUtil.SlowTest
 import pimpathon.file._
@@ -41,6 +42,7 @@ class BasicWorkflow extends FunSpec with Matchers {
             fail("Failed to understand inspect symbol response: " + inspectResp)
         }
 
+        //        interactor.expectRPC(20 seconds, s"""(swank:type-by-id $intTypeId)""", s"""(:ok (:name "Int" :type-id $intTypeId :full-name "scala.Int" :decl-as class))""")
         //use the type ID to get the type information
         // compared with a baseline with the type ids removed (
         //        // type info for secondary buffer

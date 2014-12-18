@@ -4,6 +4,7 @@ import java.util.concurrent.atomic.AtomicReference
 import net.virtualvoid.sbt.graph.Plugin.graphSettings
 import scoverage.ScoverageSbtPlugin.instrumentSettings
 import org.scoverage.coveralls.CoverallsPlugin.coverallsSettings
+import scala.util.Try
 
 // NOTE: the following skips the slower tests
 // test-only * -- -l SlowTest
@@ -19,9 +20,10 @@ version := "0.9.10-SNAPSHOT"
 //resolvers += Resolver.sonatypeRepo("snapshots")
 
 libraryDependencies ++= Seq(
-  "com.github.stacycurl"       %% "pimpathon-core"       % "1.0.0",
+  "com.chuusai"                % ("shapeless_" + scalaVersion.value) % "2.0.0",
+  "com.github.stacycurl"       %% "pimpathon-core"       % "1.1.0",
   "org.parboiled"              %% "parboiled-scala"      % "1.1.6",
-  "com.h2database"             %  "h2"                   % "1.4.181",
+  "com.h2database"             %  "h2"                   % "1.4.182",
   "com.typesafe.slick"         %% "slick"                % "2.1.0",
   "com.jolbox"                 %  "bonecp"               % "0.8.0.RELEASE",
   "org.apache.commons"         %  "commons-vfs2"         % "2.0" intransitive(),
@@ -39,36 +41,39 @@ libraryDependencies ++= Seq(
   "com.typesafe.akka"          %% "akka-testkit"         % "2.3.6" % "test",
   "commons-io"                 %  "commons-io"           % "2.4"   % "test",
   "org.scalatest"              %% "scalatest"            % "2.2.2" % "test",
-  "org.scalamock"              %% "scalamock-scalatest-support" % "3.1.RC1" % "test",
+  "org.scalamock"              %% "scalamock-scalatest-support" % "3.1.4" % "test",
+  "org.scalacheck"             %% "scalacheck"           % "1.11.6" % "test",
   "ch.qos.logback"             %  "logback-classic"      % "1.1.2",
   "org.slf4j"                  %  "jul-to-slf4j"         % "1.7.7",
   "org.slf4j"                  %  "jcl-over-slf4j"       % "1.7.7",
   "org.scala-refactoring"      %% "org.scala-refactoring.library" % "0.6.2"
 )
 
-// epic hack to get the tools.jar JDK dependency
-val JavaTools = List[Option[String]] (
+// WORKAROUND: https://github.com/typelevel/scala/issues/75
+val jdkDir: File = List(
   // manual
   sys.env.get("JDK_HOME"),
   sys.env.get("JAVA_HOME"),
   // osx
-  try Some("/usr/libexec/java_home".!!.trim)
-  catch {
-    case _: Throwable => None
-  },
+  Try("/usr/libexec/java_home".!!.trim).toOption,
   // fallback
   sys.props.get("java.home").map(new File(_).getParent),
   sys.props.get("java.home")
-).flatten.map { n =>
-  new File(n + "/lib/tools.jar")
-}.find(_.exists).getOrElse (
-  throw new FileNotFoundException (
+).flatten.filter { n =>
+  new File(n + "/lib/tools.jar").exists
+}.headOption.map(new File(_)).getOrElse(
+  throw new FileNotFoundException(
     """Could not automatically find the JDK/lib/tools.jar.
       |You must explicitly set JDK_HOME or JAVA_HOME.""".stripMargin
   )
 )
 
+// epic hack to get the tools.jar JDK dependency
+val JavaTools = file(jdkDir + "/lib/tools.jar")
+
 internalDependencyClasspath in Compile += { Attributed.blank(JavaTools) }
+
+internalDependencyClasspath in Test += { Attributed.blank(JavaTools) }
 
 scalacOptions in Compile ++= Seq(
   "-encoding", "UTF-8", "-target:jvm-1.6", "-feature", "-deprecation",
@@ -110,17 +115,13 @@ def classDirs(cp: Classpath): String = {
   } yield file.getAbsolutePath
 }.mkString(",")
 
-javaOptions ++= Seq("-XX:MaxPermSize=128m", "-Xmx1g", "-XX:+UseConcMarkSweepGC")
+javaOptions ++= Seq("-XX:MaxPermSize=256m", "-Xmx2g", "-XX:+UseConcMarkSweepGC")
 
-javaOptions in Test ++= infoForTests.value
+// 0.13.7 introduced awesomely fast resolution caching
+updateOptions := updateOptions.value.withCachedResolution(true)
 
-javaOptions in Test += "-Dakka.actor.debug.receive=on"
-
-lazy val infoForTests = TaskKey[Seq[String]]("infoForTests", "for use in tests")
-
-// TODO: cache the results
-// http://stackoverflow.com/questions/25410484
-infoForTests := Seq(
+javaOptions in Test ++= Seq(
+  "-XX:MaxPermSize=256m", "-Xmx4g", "-XX:+UseConcMarkSweepGC",
   "-Densime.compile.jars=" + jars((fullClasspath in Compile).value),
   "-Densime.test.jars=" + jars((fullClasspath in Test).value),
   "-Densime.compile.classDirs=" + classDirs((fullClasspath in Compile).value),
@@ -136,7 +137,7 @@ infoForTests := Seq(
 unmanagedSourceDirectories in Test += baseDirectory.value / "src/example-simple"
 
 // full stacktraces in scalatest
-testOptions in Test += Tests.Argument("-oF")
+//testOptions in Test += Tests.Argument("-oF")
 
 graphSettings
 
@@ -145,7 +146,7 @@ scalariformSettings
 instrumentSettings
 
 // let's bump this every time we get more tests
-ScoverageKeys.minimumCoverage := 56
+ScoverageKeys.minimumCoverage := 64
 
 // might be buggy
 ScoverageKeys.highlighting := true

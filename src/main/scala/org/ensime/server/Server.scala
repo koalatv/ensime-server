@@ -1,7 +1,10 @@
 package org.ensime.server
 
+import com.google.common.base.Charsets
+import com.google.common.io.Files
 import java.io._
 import java.net.{ InetAddress, ServerSocket, Socket }
+import java.util.concurrent.atomic.AtomicBoolean
 
 import akka.actor._
 import org.ensime.config._
@@ -28,7 +31,7 @@ object Server {
     if (!ensimeFile.exists() || !ensimeFile.isFile)
       throw new RuntimeException(s".ensime file ($ensimeFile) not found")
 
-    val config = readEnsimeConfig(ensimeFile)
+    val config = EnsimeConfig.parse(Files.toString(ensimeFile, Charsets.UTF_8))
 
     initialiseServer(config)
   }
@@ -37,25 +40,6 @@ object Server {
     val server = new Server(config, "127.0.0.1", 0)
     server.start()
     server
-  }
-
-  /**
-   * ******************************************************************************
-   * Read a new style config from the given files.
-   * @param ensimeFile The base ensime file.
-   * @param rootDir The project root directory
-   * @param cacheDir The
-   * @return
-   */
-  def readEnsimeConfig(ensimeFile: File): EnsimeConfig = {
-    val configSrc = Source.fromFile(ensimeFile)
-    try {
-      val content = configSrc.getLines().filterNot(_.startsWith(";;")).mkString("\n")
-      val parsed = SExpParser.read(content).asInstanceOf[SExpList]
-      EnsimeConfig.parse(parsed)
-    } finally {
-      configSrc.close()
-    }
   }
 }
 
@@ -76,7 +60,7 @@ class Server(config: EnsimeConfig, host: String, requestedPort: Int) {
 
   writePort(config.cacheDir, actualPort)
 
-  val protocol = new SwankProtocol
+  val protocol = new SwankProtocol(actorSystem)
   val project = new Project(config, protocol, actorSystem)
 
   def start() {
@@ -84,18 +68,20 @@ class Server(config: EnsimeConfig, host: String, requestedPort: Int) {
     startSocketListener()
   }
 
+  private val hasShutdownFlag = new AtomicBoolean(false)
   def startSocketListener(): Unit = {
     val t = new Thread(new Runnable() {
       def run() {
         try {
-          while (true) {
+          while (!hasShutdownFlag.get()) {
             try {
               val socket = listener.accept()
               log.info("Got connection, creating handler...")
               actorSystem.actorOf(Props(classOf[SocketHandler], socket, protocol, project))
             } catch {
               case e: IOException =>
-                log.error("ENSIME Server: ", e)
+                if (!hasShutdownFlag.get())
+                  log.error("ENSIME Server socket listener error: ", e)
             }
           }
         } finally {
@@ -108,8 +94,12 @@ class Server(config: EnsimeConfig, host: String, requestedPort: Int) {
 
   def shutdown() {
     log.info("Shutting down server")
+    hasShutdownFlag.set(true)
     listener.close()
     actorSystem.shutdown()
+    log.info("Awaiting actor system shutdown")
+    actorSystem.awaitTermination()
+    log.info("Shutdown complete")
   }
   private def writePort(cacheDir: File, port: Int): Unit = {
     val portfile = new File(cacheDir, "port")
