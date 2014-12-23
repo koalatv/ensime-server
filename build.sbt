@@ -15,7 +15,7 @@ name := "ensime"
 
 scalaVersion := "2.11.4"
 
-version := "0.9.10-SNAPSHOT"
+version := "0.9.11-SNAPSHOT"
 
 //resolvers += Resolver.sonatypeRepo("snapshots")
 
